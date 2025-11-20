@@ -1,0 +1,7 @@
+{
+  "name": "NeuroNote AI",
+  "description": "An interactive AI study companion that transforms notes into flowcharts, quizzes, and audio overviews, featuring a real-time AI tutor.",
+  "requestFramePermissions": [
+    "microphone"
+  ]
+}
