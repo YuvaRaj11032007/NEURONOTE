@@ -4,30 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>NeuroNote AI</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script>
-      tailwind.config = {
-        theme: {
-          extend: {
-            colors: {
-              primary: '#8ab4f8', // Google Blue-ish
-              secondary: '#c4eed0', // Google Green-ish
-              accent: '#fce8e6', // Google Red-ish
-              dark: '#131314', // NotebookLM Dark BG
-              surface: '#1e1f20', // NotebookLM Card BG
-              surfaceHighlight: '#2d2e31',
-              border: '#444746'
-            },
-            fontFamily: {
-              sans: ['Google Sans', 'Roboto', 'Helvetica Neue', 'sans-serif'],
-            },
-            animation: {
-              'pulse-slow': 'pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite',
-            }
-          }
-        }
-      }
-    </script>
+
     <style>
       @import url('https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap');
       
@@ -74,5 +51,6 @@
 </head>
   <body class="bg-dark text-e3e3e3 h-screen overflow-hidden selection:bg-primary selection:text-dark">
     <div id="root"></div>
+    <script type="module" src="/index.tsx"></script>
   </body>
 </html>
