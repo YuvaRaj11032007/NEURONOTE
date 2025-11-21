@@ -2,6 +2,9 @@ import React, { useEffect, useRef, useState } from 'react';
 import { GoogleGenAI, Modality } from "@google/genai";
 import { createPcmBlob, decodeAudioData } from '../services/audioUtils';
 import { Note, NoteType } from '../types';
+import { Button } from '@/components/ui/Button';
+import { Dialog, DialogContent } from '@/components/ui/Dialog';
+import { Mic, X, Minimize2, Maximize2, AlertTriangle, ShieldAlert, Zap } from 'lucide-react';
 
 interface LiveTutorModalProps {
   isOpen: boolean;
@@ -83,14 +86,12 @@ const LiveTutorModal: React.FC<LiveTutorModalProps> = ({ isOpen, onClose, notes,
   }, [isDragging]);
 
   const startSession = async () => {
-    // Prevent multiple connections
     if (sessionRef.current || status === 'connected' || status === 'connecting') return;
 
     try {
       setStatus('connecting');
       const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
-      // 1. Initialize Audio Contexts
       const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
       const inputCtx = new AudioContextClass({ sampleRate: 16000 });
       const outputCtx = new AudioContextClass({ sampleRate: 24000 });
@@ -98,7 +99,6 @@ const LiveTutorModal: React.FC<LiveTutorModalProps> = ({ isOpen, onClose, notes,
       inputAudioContextRef.current = inputCtx;
       outputAudioContextRef.current = outputCtx;
 
-      // 2. Get Microphone Stream (Handle Permissions)
       let stream: MediaStream;
       try {
         stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -109,7 +109,6 @@ const LiveTutorModal: React.FC<LiveTutorModalProps> = ({ isOpen, onClose, notes,
         return;
       }
 
-      // 3. Prepare System Instruction
       const contextParts = notes.map(n => {
           let contentDesc = "";
           if (n.type === NoteType.TEXT) {
@@ -147,7 +146,6 @@ const LiveTutorModal: React.FC<LiveTutorModalProps> = ({ isOpen, onClose, notes,
            5. Start by saying "Hey! I'm ready to study. I see you've got ${activeNote ? activeNote.fileName : 'your notes'} open. What's up?"
            `;
 
-      // 4. Connect to Gemini Live
       const sessionPromise = ai.live.connect({
         model: 'gemini-2.5-flash-native-audio-preview-09-2025',
         callbacks: {
@@ -163,22 +161,17 @@ const LiveTutorModal: React.FC<LiveTutorModalProps> = ({ isOpen, onClose, notes,
             processorRef.current = processor;
 
             processor.onaudioprocess = (e) => {
-              // Guard: Stop processing if session is gone or not active
               if (!sessionRef.current || !isSessionActive.current) return;
               
               const inputData = e.inputBuffer.getChannelData(0);
               const pcmBlob = createPcmBlob(inputData);
               
               sessionPromise.then(session => {
-                  // Double check inside the promise resolution
                   if (!isSessionActive.current) return;
                   try {
                     session.sendRealtimeInput({ media: pcmBlob });
-                  } catch(err) {
-                      // Silent fail if session closed in background
-                  }
+                  } catch(err) {}
               }).catch(err => {
-                  // Ignore errors from resolved session promise if we are disconnecting
                   if(isSessionActive.current) console.warn("Send input error:", err);
               });
             };
@@ -192,7 +185,6 @@ const LiveTutorModal: React.FC<LiveTutorModalProps> = ({ isOpen, onClose, notes,
                 setIsSpeaking(true);
                 const ctx = outputAudioContextRef.current;
                 
-                // Guard: Context must be active
                 if (!ctx || ctx.state === 'closed') return;
                 
                 if (ctx.state === 'suspended') await ctx.resume();
@@ -201,7 +193,7 @@ const LiveTutorModal: React.FC<LiveTutorModalProps> = ({ isOpen, onClose, notes,
                 
                 try {
                     const audioBuffer = await decodeAudioData(
-                        new Uint8Array(atob(base64Audio).split('').map(c => c.charCodeAt(0))), 
+                        new Uint8Array(atob(base64Audio).split('').map(c => c.charCodeAt(0))),
                         ctx
                     );
 
@@ -258,17 +250,14 @@ const LiveTutorModal: React.FC<LiveTutorModalProps> = ({ isOpen, onClose, notes,
     }
   };
 
-  // Updated disconnect to handle specific status states and prevent "closed" context errors
   const disconnect = async (nextStatus: 'idle' | 'error' | 'permission-denied' = 'idle') => {
      isSessionActive.current = false;
      
-     // 1. Stop Media Stream
      if (streamRef.current) {
          streamRef.current.getTracks().forEach(t => t.stop());
          streamRef.current = null;
      }
 
-     // 2. Safely Close Input Context
      if (inputAudioContextRef.current) {
          if (inputAudioContextRef.current.state !== 'closed') {
              try { await inputAudioContextRef.current.close(); } catch(e) { console.warn("Error closing input context", e); }
@@ -276,7 +265,6 @@ const LiveTutorModal: React.FC<LiveTutorModalProps> = ({ isOpen, onClose, notes,
          inputAudioContextRef.current = null;
      }
 
-     // 3. Safely Close Output Context
      if (outputAudioContextRef.current) {
          if (outputAudioContextRef.current.state !== 'closed') {
              try { await outputAudioContextRef.current.close(); } catch(e) { console.warn("Error closing output context", e); }
@@ -284,23 +272,18 @@ const LiveTutorModal: React.FC<LiveTutorModalProps> = ({ isOpen, onClose, notes,
          outputAudioContextRef.current = null;
      }
 
-     // 4. Close Gemini Session
      if (sessionRef.current) {
          const currentSession = sessionRef.current;
          sessionRef.current = null; // Clear ref immediately
          try {
              const session = await currentSession;
              await session.close();
-         } catch (e) { 
-             // Ignore errors if session is already closed/failed
-         }
+         } catch (e) { }
      }
 
-     // 5. Reset State
      setStatus(nextStatus);
      setIsSpeaking(false);
      
-     // Stop all active audio sources
      sourcesRef.current.forEach(s => { try { s.stop(); } catch(e){} });
      sourcesRef.current.clear();
      nextStartTimeRef.current = 0;
@@ -308,20 +291,10 @@ const LiveTutorModal: React.FC<LiveTutorModalProps> = ({ isOpen, onClose, notes,
 
   if (!isOpen) return null;
 
-  // Custom Styles for complex animations
   const styles = `
     @keyframes orbit-cw { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
     @keyframes orbit-ccw { from { transform: rotate(360deg); } to { transform: rotate(0deg); } }
-    @keyframes pulse-glow { 0% { opacity: 0.4; transform: scale(1); } 50% { opacity: 0.8; transform: scale(1.05); } 100% { opacity: 0.4; transform: scale(1); } }
-    @keyframes float-slow { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-10px); } }
     @keyframes waveform { 0%, 100% { height: 10%; } 50% { height: 100%; } }
-    .glass-panel {
-        background: rgba(30, 31, 32, 0.75);
-        backdrop-filter: blur(20px);
-        -webkit-backdrop-filter: blur(20px);
-        border: 1px solid rgba(255, 255, 255, 0.1);
-        box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
-    }
   `;
 
   const Visualizer = ({ isActive, className }: { isActive: boolean, className?: string }) => (
@@ -339,7 +312,6 @@ const LiveTutorModal: React.FC<LiveTutorModalProps> = ({ isOpen, onClose, notes,
       </div>
   );
 
-  // Minimized Floating View (Futuristic Orb)
   if (isMinimized) {
       return (
         <>
@@ -363,12 +335,12 @@ const LiveTutorModal: React.FC<LiveTutorModalProps> = ({ isOpen, onClose, notes,
                      )}
                  </div>
                  <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-all duration-200 flex items-center justify-center gap-2 backdrop-blur-sm">
-                      <button onClick={(e) => { e.stopPropagation(); setIsMinimized(false); }} className="p-2 text-white hover:text-primary transition-transform hover:scale-110">
-                          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg>
-                      </button>
-                      <button onClick={(e) => { e.stopPropagation(); onClose(); }} className="p-2 text-white hover:text-red-400 transition-transform hover:scale-110">
-                          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-                      </button>
+                      <Button variant="ghost" size="icon" onClick={(e) => { e.stopPropagation(); setIsMinimized(false); }}>
+                          <Maximize2 className="w-5 h-5" />
+                      </Button>
+                      <Button variant="ghost" size="icon" onClick={(e) => { e.stopPropagation(); onClose(); }}>
+                          <X className="w-5 h-5" />
+                      </Button>
                  </div>
             </div>
             <div className={`absolute -bottom-2 left-1/2 -translate-x-1/2 px-2 py-0.5 rounded-full text-[9px] font-bold tracking-wider uppercase border border-black/20 shadow-lg transition-colors ${status === 'connected' ? 'bg-green-500 text-black' : status === 'permission-denied' ? 'bg-red-500 text-white' : 'bg-yellow-500 text-black'}`}>
@@ -379,111 +351,99 @@ const LiveTutorModal: React.FC<LiveTutorModalProps> = ({ isOpen, onClose, notes,
       );
   }
 
-  // Expanded View
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm animate-fade-in">
-      <style>{styles}</style>
-      
-      <div className="w-full max-w-3xl aspect-video max-h-[80vh] relative flex flex-col items-center justify-center glass-panel rounded-[40px] overflow-hidden">
-        
-        {/* Background Ambience */}
-        <div className="absolute inset-0 pointer-events-none overflow-hidden">
-             <div className={`absolute top-1/4 left-1/4 w-96 h-96 bg-purple-600/20 rounded-full blur-[100px] transition-all duration-[2000ms] ${isSpeaking ? 'scale-125 opacity-40 translate-x-10' : 'scale-100 opacity-20'}`}></div>
-             <div className={`absolute bottom-1/4 right-1/4 w-96 h-96 bg-blue-500/20 rounded-full blur-[100px] transition-all duration-[2000ms] ${isSpeaking ? 'scale-125 opacity-40 -translate-x-10' : 'scale-100 opacity-20'}`}></div>
-             <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-[0.03]"></div>
-        </div>
-
-        {/* Top Header UI */}
-        <div className="absolute top-0 left-0 right-0 p-8 flex justify-between items-start z-10">
-            <div className="flex items-center gap-4">
-                <div className="w-10 h-10 rounded-xl bg-white/5 border border-white/10 flex items-center justify-center text-primary">
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/></svg>
+    <Dialog open={isOpen} onOpenChange={onClose}>
+        <DialogContent className="w-full max-w-3xl aspect-video max-h-[80vh] p-0 overflow-hidden">
+            <style>{styles}</style>
+            <div className="relative flex flex-col items-center justify-center h-full">
+                <div className="absolute inset-0 pointer-events-none overflow-hidden">
+                     <div className={`absolute top-1/4 left-1/4 w-96 h-96 bg-purple-600/20 rounded-full blur-[100px] transition-all duration-[2000ms] ${isSpeaking ? 'scale-125 opacity-40 translate-x-10' : 'scale-100 opacity-20'}`}></div>
+                     <div className={`absolute bottom-1/4 right-1/4 w-96 h-96 bg-blue-500/20 rounded-full blur-[100px] transition-all duration-[2000ms] ${isSpeaking ? 'scale-125 opacity-40 -translate-x-10' : 'scale-100 opacity-20'}`}></div>
+                     <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-[0.03]"></div>
                 </div>
-                <div>
-                    <h2 className="text-white font-google-sans text-xl font-medium tracking-tight">AI Tutor <span className="text-primary/80 mx-2">•</span> {subjectName}</h2>
-                    <div className="flex items-center gap-2 mt-1">
-                        <span className={`w-2 h-2 rounded-full ${status === 'connected' ? 'bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.6)]' : status === 'permission-denied' || status === 'error' ? 'bg-red-500' : 'bg-yellow-500 animate-pulse'}`}></span>
-                        <p className="text-gray-400 text-xs font-medium uppercase tracking-widest">
-                            {status === 'connected' ? (isSpeaking ? 'Transmitting' : 'Listening') : status === 'permission-denied' ? 'Mic Access Denied' : status === 'error' ? 'Error' : 'Connecting...'}
-                        </p>
-                    </div>
-                </div>
-            </div>
-            
-            <div className="flex gap-3">
-                <button onClick={() => setIsMinimized(true)} className="w-10 h-10 rounded-full bg-white/5 border border-white/10 hover:bg-white/10 text-gray-300 hover:text-white flex items-center justify-center transition-all">
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M20 14h-6v6M4 10h6V4M20 14l-7 7M4 10l7-7"/></svg>
-                </button>
-                <button onClick={onClose} className="w-10 h-10 rounded-full bg-white/5 border border-white/10 hover:bg-red-500/20 text-gray-300 hover:text-red-400 flex items-center justify-center transition-all">
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
-                </button>
-            </div>
-        </div>
 
-        {/* CENTRAL HOLOGRAPHIC CORE */}
-        <div className="relative z-0 flex items-center justify-center w-full h-full">
-            {status === 'permission-denied' ? (
-                 <div className="text-center max-w-md p-8 bg-red-500/10 border border-red-500/30 rounded-2xl backdrop-blur-md">
-                     <div className="w-16 h-16 bg-red-500/20 rounded-full flex items-center justify-center mx-auto mb-4 text-red-400">
-                         <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="1" y1="1" x2="23" y2="23"/><path d="M9 9v3a3 3 0 0 0 5.12 2.12M15 9.34V4a3 3 0 0 0-5.94-.6"/><path d="M17 16.95A7 7 0 0 1 5 12v-2m14 0v2a7 7 0 0 1-.11 1.23"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
-                     </div>
-                     <h3 className="text-xl font-bold text-white mb-2">Microphone Blocked</h3>
-                     <p className="text-gray-300">Please allow microphone access in your browser settings to talk with the AI tutor.</p>
-                     <button onClick={() => { setStatus('idle'); startSession(); }} className="mt-4 px-6 py-2 bg-red-500/20 hover:bg-red-500/40 text-white rounded-full font-medium transition-colors">Retry Access</button>
-                 </div>
-            ) : status === 'error' ? (
-                 <div className="text-center max-w-md p-8 bg-yellow-500/10 border border-yellow-500/30 rounded-2xl backdrop-blur-md">
-                     <div className="w-16 h-16 bg-yellow-500/20 rounded-full flex items-center justify-center mx-auto mb-4 text-yellow-400">
-                         <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-                     </div>
-                     <h3 className="text-xl font-bold text-white mb-2">Connection Failed</h3>
-                     <p className="text-gray-300">Unable to connect to Gemini Live. Please check your network or try again later.</p>
-                     <button onClick={() => { setStatus('idle'); startSession(); }} className="mt-4 px-6 py-2 bg-yellow-500/20 hover:bg-yellow-500/40 text-white rounded-full font-medium transition-colors">Retry Connection</button>
-                 </div>
-            ) : (
-                /* Core Orb Animation */
-                <div className="relative">
-                    <div className={`absolute w-[400px] h-[400px] rounded-full border border-white/5 border-dashed animate-[orbit-cw_60s_linear_infinite] opacity-50 pointer-events-none`}></div>
-                    <div className={`absolute w-[320px] h-[320px] rounded-full border border-primary/10 animate-[orbit-ccw_30s_linear_infinite] pointer-events-none`}></div>
-                    
-                    <div className={`absolute inset-0 bg-primary/30 rounded-full blur-[60px] transition-all duration-300 ${isSpeaking ? 'scale-150 opacity-100' : 'scale-100 opacity-40'}`}></div>
-                    
-                    <div className={`relative w-48 h-48 rounded-full overflow-hidden shadow-2xl ring-1 ring-white/20 flex items-center justify-center bg-black/20 backdrop-blur-md transition-transform duration-1000 ${isSpeaking ? 'scale-105' : 'scale-100 animate-[float-slow_6s_ease-in-out_infinite]'}`}>
-                        <div className={`absolute inset-0 bg-gradient-to-br from-blue-600/80 via-primary/50 to-purple-600/80 opacity-80 mix-blend-screen transition-opacity duration-300 ${isSpeaking ? 'opacity-100' : 'opacity-60'}`}></div>
-                        <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-20 mix-blend-overlay"></div>
-                        
-                        <div className="relative z-10 flex items-center justify-center">
-                            {status === 'connecting' ? (
-                                 <div className="w-12 h-12 border-4 border-white/30 border-t-white rounded-full animate-spin"></div>
-                            ) : (
-                                 <Visualizer isActive={isSpeaking} className="h-16 gap-2" />
-                            )}
+                <div className="absolute top-0 left-0 right-0 p-8 flex justify-between items-start z-10">
+                    <div className="flex items-center gap-4">
+                        <div className="w-10 h-10 rounded-xl bg-muted border flex items-center justify-center text-primary">
+                            <Mic className="w-5 h-5" />
+                        </div>
+                        <div>
+                            <h2 className="text-xl font-medium tracking-tight">AI Tutor <span className="text-primary/80 mx-2">•</span> {subjectName}</h2>
+                            <div className="flex items-center gap-2 mt-1">
+                                <span className={`w-2 h-2 rounded-full ${status === 'connected' ? 'bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.6)]' : status === 'permission-denied' || status === 'error' ? 'bg-red-500' : 'bg-yellow-500 animate-pulse'}`}></span>
+                                <p className="text-muted-foreground text-xs font-medium uppercase tracking-widest">
+                                    {status === 'connected' ? (isSpeaking ? 'Transmitting' : 'Listening') : status === 'permission-denied' ? 'Mic Access Denied' : status === 'error' ? 'Error' : 'Connecting...'}
+                                </p>
+                            </div>
                         </div>
                     </div>
+                    
+                    <div className="flex gap-3">
+                        <Button variant="outline" size="icon" onClick={() => setIsMinimized(true)}>
+                            <Minimize2 className="w-5 h-5" />
+                        </Button>
+                        <Button variant="outline" size="icon" onClick={onClose}>
+                            <X className="w-5 h-5" />
+                        </Button>
+                    </div>
                 </div>
-            )}
-        </div>
 
-        {/* Bottom Control Bar */}
-        <div className="absolute bottom-10 left-1/2 -translate-x-1/2 z-10">
-             <div className="flex items-center gap-4 bg-white/5 backdrop-blur-md border border-white/10 px-2 py-2 rounded-full shadow-2xl">
-                 <button 
-                    className={`w-12 h-12 rounded-full flex items-center justify-center transition-all ${!isSpeaking ? 'bg-white/10 text-white' : 'text-gray-500'}`}
-                 >
-                     <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
-                 </button>
-                 <div className="h-8 w-[1px] bg-white/10"></div>
-                 <button 
-                    onClick={onClose}
-                    className="px-6 py-3 bg-red-500/20 hover:bg-red-500/30 text-red-200 font-medium rounded-full transition-colors flex items-center gap-2"
-                 >
-                     <span className="w-2 h-2 bg-red-500 rounded-sm"></span> End Session
-                 </button>
-             </div>
-        </div>
+                <div className="relative z-0 flex items-center justify-center w-full h-full">
+                    {status === 'permission-denied' ? (
+                         <div className="text-center max-w-md p-8 bg-destructive/10 border border-destructive/30 rounded-2xl backdrop-blur-md">
+                             <div className="w-16 h-16 bg-destructive/20 rounded-full flex items-center justify-center mx-auto mb-4 text-destructive">
+                                 <ShieldAlert className="w-8 h-8" />
+                             </div>
+                             <h3 className="text-xl font-bold mb-2">Microphone Blocked</h3>
+                             <p className="text-muted-foreground">Please allow microphone access in your browser settings to talk with the AI tutor.</p>
+                             <Button onClick={() => { setStatus('idle'); startSession(); }} variant="destructive" className="mt-4">Retry Access</Button>
+                         </div>
+                    ) : status === 'error' ? (
+                         <div className="text-center max-w-md p-8 bg-yellow-500/10 border border-yellow-500/30 rounded-2xl backdrop-blur-md">
+                             <div className="w-16 h-16 bg-yellow-500/20 rounded-full flex items-center justify-center mx-auto mb-4 text-yellow-400">
+                                 <AlertTriangle className="w-8 h-8" />
+                             </div>
+                             <h3 className="text-xl font-bold mb-2">Connection Failed</h3>
+                             <p className="text-muted-foreground">Unable to connect to Gemini Live. Please check your network or try again later.</p>
+                             <Button onClick={() => { setStatus('idle'); startSession(); }} variant="secondary" className="mt-4">Retry Connection</Button>
+                         </div>
+                    ) : (
+                        <div className="relative">
+                            <div className={`absolute w-[400px] h-[400px] rounded-full border border-white/5 border-dashed animate-[orbit-cw_60s_linear_infinite] opacity-50 pointer-events-none`}></div>
+                            <div className={`absolute w-[320px] h-[320px] rounded-full border border-primary/10 animate-[orbit-ccw_30s_linear_infinite] pointer-events-none`}></div>
+                            
+                            <div className={`absolute inset-0 bg-primary/30 rounded-full blur-[60px] transition-all duration-300 ${isSpeaking ? 'scale-150 opacity-100' : 'scale-100 opacity-40'}`}></div>
+                            
+                            <div className={`relative w-48 h-48 rounded-full overflow-hidden shadow-2xl ring-1 ring-white/20 flex items-center justify-center bg-black/20 backdrop-blur-md transition-transform duration-1000 ${isSpeaking ? 'scale-105' : 'scale-100 animate-in spin-in-6'}`}>
+                                <div className={`absolute inset-0 bg-gradient-to-br from-blue-600/80 via-primary/50 to-purple-600/80 opacity-80 mix-blend-screen transition-opacity duration-300 ${isSpeaking ? 'opacity-100' : 'opacity-60'}`}></div>
+                                <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-20 mix-blend-overlay"></div>
+                                
+                                <div className="relative z-10 flex items-center justify-center">
+                                    {status === 'connecting' ? (
+                                         <div className="w-12 h-12 border-4 border-white/30 border-t-white rounded-full animate-spin"></div>
+                                    ) : (
+                                         <Visualizer isActive={isSpeaking} className="h-16 gap-2" />
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+                    )}
+                </div>
 
-      </div>
-    </div>
+                <div className="absolute bottom-10 left-1/2 -translate-x-1/2 z-10">
+                     <div className="flex items-center gap-4 bg-muted/50 backdrop-blur-md border px-2 py-2 rounded-full shadow-2xl">
+                         <Button variant={!isSpeaking ? 'secondary' : 'ghost'} size="icon" className="w-12 h-12">
+                             <Mic className="w-6 h-6" />
+                         </Button>
+                         <div className="h-8 w-[1px] bg-border"></div>
+                         <Button onClick={onClose} variant="destructive" className="px-6 py-3">
+                             <Zap className="w-4 h-4 mr-2" /> End Session
+                         </Button>
+                     </div>
+                </div>
+            </div>
+        </DialogContent>
+    </Dialog>
   );
 };
 

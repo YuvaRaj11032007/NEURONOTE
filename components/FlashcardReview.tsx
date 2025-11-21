@@ -1,6 +1,8 @@
-
 import React, { useState } from 'react';
 import { Flashcard } from '../types';
+import { Button } from '@/components/ui/Button';
+import { Card, CardContent } from '@/components/ui/Card';
+import { Layers, ChevronLeft, ChevronRight } from 'lucide-react';
 
 interface FlashcardReviewProps {
   flashcards: Flashcard[];
@@ -14,26 +16,25 @@ const FlashcardReview: React.FC<FlashcardReviewProps> = ({ flashcards, onGenerat
 
   if (!flashcards || flashcards.length === 0) {
       return (
-          <div className="h-full flex flex-col items-center justify-center text-gray-500 p-8">
-               <div className="w-16 h-16 bg-surfaceHighlight rounded-2xl flex items-center justify-center mb-4">
-                   <svg className="w-8 h-8 text-primary" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><path d="M9 3v18"></path></svg>
+          <div className="h-full flex flex-col items-center justify-center text-muted-foreground p-8">
+               <div className="w-16 h-16 bg-muted rounded-2xl flex items-center justify-center mb-4">
+                   <Layers className="w-8 h-8 text-primary" />
                </div>
-               <h3 className="text-xl text-white font-medium mb-2">No Flashcards Yet</h3>
+               <h3 className="text-xl text-foreground font-medium mb-2">No Flashcards Yet</h3>
                <p className="mb-6 text-center max-w-md">Generate a set of flashcards from your notes to start memorizing key concepts.</p>
-               <button 
+               <Button 
                   onClick={onGenerate}
                   disabled={isLoading}
-                  className="px-6 py-3 bg-primary text-dark font-medium rounded-full hover:bg-blue-300 transition-colors flex items-center gap-2"
                >
                   {isLoading ? (
                       <>
-                        <div className="w-4 h-4 border-2 border-dark border-t-transparent rounded-full animate-spin"></div>
+                        <div className="w-4 h-4 border-2 border-foreground border-t-transparent rounded-full animate-spin mr-2"></div>
                         Generating...
                       </>
                   ) : (
                       <>Generate Flashcards</>
                   )}
-               </button>
+               </Button>
           </div>
       );
   }
@@ -53,8 +54,8 @@ const FlashcardReview: React.FC<FlashcardReviewProps> = ({ flashcards, onGenerat
   return (
     <div className="max-w-4xl mx-auto pt-10 px-6 flex flex-col h-full">
          <div className="flex justify-between items-center mb-8">
-             <h3 className="text-2xl text-white font-medium">Flashcards</h3>
-             <span className="bg-surfaceHighlight px-3 py-1 rounded-full text-sm text-gray-400">
+             <h3 className="text-2xl font-medium">Flashcards</h3>
+             <span className="bg-muted px-3 py-1 rounded-full text-sm">
                  {currentIndex + 1} / {flashcards.length}
              </span>
          </div>
@@ -66,35 +67,40 @@ const FlashcardReview: React.FC<FlashcardReviewProps> = ({ flashcards, onGenerat
                 onClick={() => setIsFlipped(!isFlipped)}
              >
                  {/* Front */}
-                 <div className="absolute inset-0 bg-surface border border-border rounded-3xl p-10 flex flex-col items-center justify-center text-center backface-hidden shadow-2xl hover:border-primary/50 transition-colors">
-                     <span className="absolute top-6 left-6 text-xs font-bold text-primary tracking-widest uppercase">Front</span>
-                     <h4 className="text-3xl font-medium text-white">{currentCard.front}</h4>
-                     <div className="absolute bottom-6 text-gray-500 text-sm">Tap to flip</div>
-                 </div>
+                 <Card className="absolute inset-0 flex flex-col items-center justify-center text-center backface-hidden shadow-2xl">
+                     <CardContent className="p-10">
+                        <span className="absolute top-6 left-6 text-xs font-bold text-primary tracking-widest uppercase">Front</span>
+                        <h4 className="text-3xl font-medium">{currentCard.front}</h4>
+                        <div className="absolute bottom-6 text-muted-foreground text-sm">Tap to flip</div>
+                     </CardContent>
+                 </Card>
 
                  {/* Back */}
-                 <div className="absolute inset-0 bg-[#2d2e31] border border-gray-600 rounded-3xl p-10 flex flex-col items-center justify-center text-center backface-hidden rotate-y-180 shadow-2xl">
-                     <span className="absolute top-6 left-6 text-xs font-bold text-green-400 tracking-widest uppercase">Back</span>
-                     <p className="text-xl text-gray-200 leading-relaxed">{currentCard.back}</p>
-                 </div>
+                <Card className="absolute inset-0 flex flex-col items-center justify-center text-center backface-hidden rotate-y-180 shadow-2xl bg-secondary">
+                     <CardContent className="p-10">
+                        <span className="absolute top-6 left-6 text-xs font-bold text-green-400 tracking-widest uppercase">Back</span>
+                        <p className="text-xl leading-relaxed">{currentCard.back}</p>
+                     </CardContent>
+                 </Card>
              </div>
 
              {/* Controls */}
              <div className="absolute bottom-0 left-0 right-0 translate-y-full pt-8 flex items-center justify-center gap-6">
-                 <button onClick={prevCard} className="p-3 rounded-full bg-surface border border-border text-gray-400 hover:text-white hover:bg-surfaceHighlight transition-colors">
-                    <svg className="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M15 18l-6-6 6-6"/></svg>
-                 </button>
+                 <Button onClick={prevCard} variant="outline" size="icon">
+                    <ChevronLeft className="w-6 h-6" />
+                 </Button>
                  
-                 <button 
+                 <Button 
                     onClick={() => setIsFlipped(!isFlipped)}
-                    className="px-8 py-3 rounded-xl bg-surfaceHighlight text-white font-medium hover:bg-gray-700 transition-colors"
+                    variant="secondary"
+                    className="px-8 py-3"
                  >
                      {isFlipped ? 'Show Question' : 'Reveal Answer'}
-                 </button>
+                 </Button>
 
-                 <button onClick={nextCard} className="p-3 rounded-full bg-surface border border-border text-gray-400 hover:text-white hover:bg-surfaceHighlight transition-colors">
-                    <svg className="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9 18l6-6-6-6"/></svg>
-                 </button>
+                 <Button onClick={nextCard} variant="outline" size="icon">
+                    <ChevronRight className="w-6 h-6" />
+                 </Button>
              </div>
          </div>
          
