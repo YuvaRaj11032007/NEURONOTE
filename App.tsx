@@ -9,6 +9,9 @@ import LiveTutorModal from './components/LiveTutorModal';
 import QuizModal from './components/QuizModal';
 import FlashcardReview from './components/FlashcardReview';
 import FileViewer from './components/FileViewer';
+import { Auth } from './components/Auth';
+import { supabase } from './services/supabase';
+import { getUserSubjects, createSubjectInDb, deleteSubjectInDb, addNoteToDb, deleteNoteInDb, updateSubjectArtifacts } from './services/dataService';
 
 // UI Icons
 const Icons = {
@@ -41,6 +44,8 @@ const generateId = () => {
 };
 
 export default function App() {
+  const [session, setSession] = useState<any>(null);
+  const [isGuest, setIsGuest] = useState(false);
   const [subjects, setSubjects] = useState<Subject[]>([]);
   const [activeSubjectId, setActiveSubjectId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -70,25 +75,41 @@ export default function App() {
   const audioContextRef = useRef<AudioContext | null>(null);
   const audioSourceRef = useRef<AudioBufferSourceNode | null>(null);
 
+  // Auth check
   useEffect(() => {
-    const saved = localStorage.getItem('neuroNoteData');
-    if (saved) {
-        try {
-            const parsed = JSON.parse(saved);
-            if (Array.isArray(parsed)) {
-                setSubjects(parsed);
-            }
-        } catch (e) {
-            console.error("Failed to load saved data");
-        }
-    }
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session);
+    }).catch((err) => {
+        console.warn("Failed to retrieve session (Likely missing Supabase config):", err);
+    });
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setSession(session);
+    });
+
+    return () => subscription.unsubscribe();
   }, []);
 
+  // Load data when session exists
   useEffect(() => {
-    localStorage.setItem('neuroNoteData', JSON.stringify(subjects));
-  }, [subjects]);
+      if (session) {
+          loadData();
+      }
+  }, [session]);
 
-  const handleCreateNotebook = () => {
+  const loadData = async () => {
+      setIsLoading(true);
+      try {
+          const data = await getUserSubjects();
+          setSubjects(data);
+      } catch (e) {
+          console.error("Failed to load data", e);
+      } finally {
+          setIsLoading(false);
+      }
+  };
+
+  const handleCreateNotebook = async () => {
     if (!newNotebookName.trim()) return;
     
     const newSubject: Subject = {
@@ -101,18 +122,33 @@ export default function App() {
       studyTime: 0,
       lastActive: Date.now()
     };
-    
-    setSubjects(prev => [...prev, newSubject]);
+
+    // Optimistic Update
+    setSubjects(prev => [newSubject, ...prev]);
     setActiveSubjectId(newSubject.id);
     setIsCreating(false);
     setNewNotebookName("");
+
+    // DB Sync only if logged in
+    if (session) {
+        try {
+            await createSubjectInDb(newSubject);
+        } catch (e) {
+            console.error(e);
+            alert("Failed to save notebook to cloud");
+        }
+    }
   };
 
-  const deleteSubject = (e: React.MouseEvent, id: string) => {
+  const deleteSubject = async (e: React.MouseEvent, id: string) => {
     e.stopPropagation();
     if (window.confirm("Delete this notebook permanently?")) {
         setSubjects(prev => prev.filter(s => s.id !== id));
         if (activeSubjectId === id) setActiveSubjectId(null);
+        
+        if (session) {
+            await deleteSubjectInDb(id);
+        }
     }
   }
 
@@ -129,8 +165,20 @@ export default function App() {
       timestamp: Date.now(),
       structuredData
     };
+    
+    // Optimistic
     const updatedSubjects = subjects.map(s => s.id === activeSubjectId ? { ...s, notes: [...s.notes, newNote] } : s);
     setSubjects(updatedSubjects);
+
+    // Sync only if logged in
+    if (session) {
+        try {
+            await addNoteToDb(activeSubjectId, newNote);
+        } catch (e) {
+            console.error(e);
+            alert("Failed to save note to cloud");
+        }
+    }
   };
 
   const handleSearch = async () => {
@@ -219,11 +267,15 @@ export default function App() {
     files.forEach(processFile);
   };
 
-  const deleteNote = (noteId: string) => {
+  const deleteNote = async (noteId: string) => {
     if(!activeSubjectId) return;
     const updatedSubjects = subjects.map(s => s.id === activeSubjectId ? { ...s, notes: s.notes.filter(n => n.id !== noteId) } : s);
     setSubjects(updatedSubjects);
     if(activeNoteId === noteId) setActiveNoteId(null);
+    
+    if (session) {
+        await deleteNoteInDb(noteId);
+    }
   };
 
   const openNote = (note: Note) => {
@@ -242,6 +294,10 @@ export default function App() {
     try {
       const data = await generateSubjectFlowchart(activeSubject.notes);
       setSubjects(subjects.map(s => s.id === activeSubject.id ? { ...s, flowchart: data } : s));
+      
+      if (session) {
+          await updateSubjectArtifacts(activeSubject.id, { flowchart: data });
+      }
     } catch (e) { 
       console.error(e);
       alert("Failed to generate study guide."); 
@@ -256,7 +312,12 @@ export default function App() {
      setIsLoading(true);
      try {
        const audioData = await generateAudioOverview(subject.notes);
-       setSubjects(prev => prev.map(s => s.id === subject.id ? { ...s, audioOverview: { audioData } } : s));
+       const newAudioOverview = { audioData, transcript: '' };
+       setSubjects(prev => prev.map(s => s.id === subject.id ? { ...s, audioOverview: newAudioOverview } : s));
+       
+       if (session) {
+           await updateSubjectArtifacts(subject.id, { audioOverview: newAudioOverview });
+       }
        return audioData;
      } catch(e) { 
          console.error(e);
@@ -277,7 +338,12 @@ export default function App() {
              title: `Quiz ${activeSubject.quizzes.length + 1}`,
              questions: questions
          };
-         setSubjects(subjects.map(s => s.id === activeSubject.id ? { ...s, quizzes: [newQuiz, ...(s.quizzes || [])] } : s));
+         const updatedQuizzes = [newQuiz, ...(activeSubject.quizzes || [])];
+         setSubjects(subjects.map(s => s.id === activeSubject.id ? { ...s, quizzes: updatedQuizzes } : s));
+         
+         if (session) {
+             await updateSubjectArtifacts(activeSubject.id, { quizzes: updatedQuizzes });
+         }
      } catch(e) { alert("Quiz gen failed."); } 
      finally { setIsLoading(false); }
   };
@@ -288,6 +354,10 @@ export default function App() {
       try {
           const cards = await generateFlashcards(activeSubject.notes);
           setSubjects(subjects.map(s => s.id === activeSubject.id ? { ...s, flashcards: cards } : s));
+          
+          if (session) {
+              await updateSubjectArtifacts(activeSubject.id, { flashcards: cards });
+          }
       } catch (e) {
           console.error(e);
           alert("Failed to generate flashcards");
@@ -336,13 +406,22 @@ export default function App() {
     }
   };
 
-  const toggleNode = (nodeId: string) => {
+  const toggleNode = async (nodeId: string) => {
       if (!activeSubject?.flowchart) return;
       const updatedNodes = activeSubject.flowchart.nodes.map(n => 
           n.id === nodeId ? { ...n, completed: !n.completed } : n
       );
-      setSubjects(subjects.map(s => s.id === activeSubject.id ? { ...s, flowchart: { ...s.flowchart!, nodes: updatedNodes } } : s));
+      const updatedFlowchart = { ...activeSubject.flowchart, nodes: updatedNodes };
+      setSubjects(subjects.map(s => s.id === activeSubject.id ? { ...s, flowchart: updatedFlowchart } : s));
+      
+      if (session) {
+          await updateSubjectArtifacts(activeSubject.id, { flowchart: updatedFlowchart });
+      }
   };
+
+  if (!session && !isGuest) {
+      return <Auth onLogin={() => setIsGuest(true)} />;
+  }
 
   return (
     <div className="flex h-screen bg-[#131314] text-white font-sans overflow-hidden selection:bg-primary/30">
@@ -384,6 +463,14 @@ export default function App() {
                        </button>
                    ))}
               </div>
+              
+              <button onClick={() => { 
+                  if (session) supabase.auth.signOut(); 
+                  setIsGuest(false);
+                  setSubjects([]);
+              }} className="mb-4 p-3 rounded-xl text-gray-500 hover:text-red-400 hover:bg-white/5 transition-all">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+              </button>
           </div>
       </div>
 
@@ -425,7 +512,7 @@ export default function App() {
                                      <span className={`text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded ${activeNoteId === note.id ? 'bg-primary text-black' : 'bg-white/10 text-gray-400'}`}>{note.type}</span>
                                      <button onClick={(e) => { e.stopPropagation(); deleteNote(note.id); }} className="text-gray-600 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity"><Icons.Trash /></button>
                                  </div>
-                                 <p className={`text-sm line-clamp-2 font-medium ${activeNoteId === note.id ? 'text-primary' : 'text-gray-300'}`}>{note.fileName || note.content.substring(0, 50)}</p>
+                                 <p className="text-sm line-clamp-2 font-medium text-gray-300">{note.fileName || note.content.substring(0, 50)}</p>
                              </div>
                          ))}
                      </div>
@@ -553,40 +640,46 @@ export default function App() {
                     <h1 className="text-5xl font-bold text-white mb-4 font-google-sans tracking-tight">Welcome to NeuroNote</h1>
                     <p className="text-gray-400 text-xl mb-16 max-w-2xl leading-relaxed">An interactive AI study companion that transforms your materials into deep understanding.</p>
                     
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-                        {/* Create New Card */}
-                        <button onClick={() => setIsCreating(true)} className="group relative h-72 rounded-[32px] overflow-hidden transition-all duration-500 hover:-translate-y-2">
-                            <div className="absolute inset-0 bg-[#1e1f20] border border-[#444746] transition-all group-hover:border-primary/50"></div>
-                            <div className="absolute inset-0 flex flex-col items-center justify-center z-10">
-                                <div className="w-20 h-20 bg-[#2d2e31] rounded-3xl flex items-center justify-center mb-6 border border-[#444746] shadow-xl group-hover:bg-primary group-hover:text-black group-hover:scale-110 transition-all duration-300">
-                                    <Icons.Plus />
-                                </div>
-                                <h3 className="text-2xl font-medium text-white mb-2">New Notebook</h3>
-                                <p className="text-gray-500">Start a new subject</p>
-                            </div>
-                        </button>
-                        
-                        {subjects.map(subject => (
-                            <div key={subject.id} onClick={() => setActiveSubjectId(subject.id)} className="group relative h-72 bg-[#1e1f20] rounded-[32px] border border-[#444746] p-8 flex flex-col justify-between cursor-pointer hover:border-primary/50 hover:shadow-2xl hover:-translate-y-2 transition-all duration-300">
-                                <div className="flex justify-between items-start">
-                                    <div className="w-14 h-14 bg-[#2d2e31] rounded-2xl flex items-center justify-center text-white font-bold text-xl shadow-inner border border-[#35363a]">
-                                        {subject.name.substring(0, 2).toUpperCase()}
+                    {isLoading && subjects.length === 0 ? (
+                       <div className="flex justify-center py-20">
+                           <div className="w-12 h-12 border-4 border-primary border-t-transparent rounded-full animate-spin"></div>
+                       </div>
+                    ) : (
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+                            {/* Create New Card */}
+                            <button onClick={() => setIsCreating(true)} className="group relative h-72 rounded-[32px] overflow-hidden transition-all duration-500 hover:-translate-y-2">
+                                <div className="absolute inset-0 bg-[#1e1f20] border border-[#444746] transition-all group-hover:border-primary/50"></div>
+                                <div className="absolute inset-0 flex flex-col items-center justify-center z-10">
+                                    <div className="w-20 h-20 bg-[#2d2e31] rounded-3xl flex items-center justify-center mb-6 border border-[#444746] shadow-xl group-hover:bg-primary group-hover:text-black group-hover:scale-110 transition-all duration-300">
+                                        <Icons.Plus />
                                     </div>
-                                    <button onClick={(e) => deleteSubject(e, subject.id)} className="opacity-0 group-hover:opacity-100 p-3 hover:bg-red-500/20 text-gray-500 hover:text-red-400 rounded-xl transition-all">
-                                        <Icons.Trash />
-                                    </button>
+                                    <h3 className="text-2xl font-medium text-white mb-2">New Notebook</h3>
+                                    <p className="text-gray-500">Start a new subject</p>
                                 </div>
-                                <div>
-                                    <h3 className="text-3xl font-bold text-white mb-2 truncate">{subject.name}</h3>
-                                    <div className="flex gap-3 text-sm text-gray-400">
-                                        <span className="bg-[#2d2e31] px-3 py-1 rounded-full border border-[#444746]">{subject.notes.length} sources</span>
-                                        <span className="bg-[#2d2e31] px-3 py-1 rounded-full border border-[#444746]">{subject.quizzes.length} quizzes</span>
+                            </button>
+                            
+                            {subjects.map(subject => (
+                                <div key={subject.id} onClick={() => setActiveSubjectId(subject.id)} className="group relative h-72 bg-[#1e1f20] rounded-[32px] border border-[#444746] p-8 flex flex-col justify-between cursor-pointer hover:border-primary/50 hover:shadow-2xl hover:-translate-y-2 transition-all duration-300">
+                                    <div className="flex justify-between items-start">
+                                        <div className="w-14 h-14 bg-[#2d2e31] rounded-2xl flex items-center justify-center text-white font-bold text-xl shadow-inner border border-[#35363a]">
+                                            {subject.name.substring(0, 2).toUpperCase()}
+                                        </div>
+                                        <button onClick={(e) => deleteSubject(e, subject.id)} className="opacity-0 group-hover:opacity-100 p-3 hover:bg-red-500/20 text-gray-500 hover:text-red-400 rounded-xl transition-all">
+                                            <Icons.Trash />
+                                        </button>
                                     </div>
-                                    <p className="text-xs text-gray-500 mt-4">Last active: {new Date(subject.lastActive).toLocaleDateString()}</p>
+                                    <div>
+                                        <h3 className="text-3xl font-bold text-white mb-2 truncate">{subject.name}</h3>
+                                        <div className="flex gap-3 text-sm text-gray-400">
+                                            <span className="bg-[#2d2e31] px-3 py-1 rounded-full border border-[#444746]">{subject.notes.length} sources</span>
+                                            <span className="bg-[#2d2e31] px-3 py-1 rounded-full border border-[#444746]">{subject.quizzes.length} quizzes</span>
+                                        </div>
+                                        <p className="text-xs text-gray-500 mt-4">Last active: {new Date(subject.lastActive).toLocaleDateString()}</p>
+                                    </div>
                                 </div>
-                            </div>
-                        ))}
-                    </div>
+                            ))}
+                        </div>
+                    )}
                 </div>
                 
                 {/* 3D Creation Modal */}
