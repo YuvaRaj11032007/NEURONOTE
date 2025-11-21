@@ -2,8 +2,8 @@ import React, { useEffect, useRef, useState } from 'react';
 import { GoogleGenAI, Modality } from "@google/genai";
 import { createPcmBlob, decodeAudioData } from '../services/audioUtils';
 import { Note, NoteType } from '../types';
-import { Button } from '@/components/ui/Button';
-import { Dialog, DialogContent } from '@/components/ui/Dialog';
+import { Button } from '@/components/ui/Button.tsx';
+import { Dialog, DialogContent } from '@/components/ui/Dialog.tsx';
 import { Mic, X, Minimize2, Maximize2, AlertTriangle, ShieldAlert, Zap } from 'lucide-react';
 
 interface LiveTutorModalProps {

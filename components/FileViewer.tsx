@@ -1,7 +1,9 @@
-
 import React, { useState, useEffect, useRef } from 'react';
 import { Note, NoteType } from '../types';
 import { decodeBase64ToUint8Array } from '../services/audioUtils';
+import { Button } from '@/components/ui/Button.tsx';
+import { Card, CardContent } from '@/components/ui/Card.tsx';
+import { ZoomIn, ZoomOut, X, ChevronLeft, ChevronRight, AlertCircle } from 'lucide-react';
 
 interface FileViewerProps {
   note: Note;
@@ -58,7 +60,8 @@ const FileViewer: React.FC<FileViewerProps> = ({ note, onClose, onPageChange }) 
       setIsLoading(true);
       try {
           // Clean and decode Base64
-          const cleanContent = note.content.replace(/[\r\n\s]/g, '');
+          const cleanContent = note.content.replace(/[
+\s]/g, '');
           const uint8Array = decodeBase64ToUint8Array(cleanContent);
 
           const loadingTask = window.pdfjsLib.getDocument({ data: uint8Array });
@@ -136,112 +139,120 @@ const FileViewer: React.FC<FileViewerProps> = ({ note, onClose, onPageChange }) 
 
   // --- Render ---
   return (
-    <div className="h-full flex flex-col bg-[#131314] animate-fade-in relative">
+    <div className="h-full flex flex-col bg-background animate-fade-in relative">
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 bg-[#1e1f20] border-b border-[#444746] shadow-sm z-20">
+        <div className="flex items-center justify-between px-6 py-4 bg-card/80 backdrop-blur-md border-b z-20">
             <div className="flex items-center gap-4 overflow-hidden">
-                <div className="w-10 h-10 rounded-lg bg-[#2d2e31] flex items-center justify-center border border-[#444746] text-primary shrink-0">
+                <div className="w-10 h-10 rounded-lg bg-muted flex items-center justify-center border text-primary shrink-0">
                     <span className="text-[10px] font-bold uppercase">{note.type}</span>
                 </div>
-                <h3 className="text-white font-medium text-lg truncate">{note.fileName || 'Untitled Note'}</h3>
+                <h3 className="font-medium text-lg truncate">{note.fileName || 'Untitled Note'}</h3>
             </div>
             <div className="flex items-center gap-2">
                 {/* Zoom Controls (PDF Only) */}
                 {note.type === NoteType.PDF && (
-                    <div className="flex items-center bg-[#2d2e31] rounded-lg mr-4 border border-[#444746]">
-                        <button onClick={handleZoomOut} className="p-2 hover:bg-white/5 text-gray-400 hover:text-white transition-colors border-r border-[#444746]">
-                            <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="5" y1="12" x2="19" y2="12"/></svg>
-                        </button>
-                        <span className="w-12 text-center text-xs font-mono text-gray-300">{Math.round(zoom * 100)}%</span>
-                        <button onClick={handleZoomIn} className="p-2 hover:bg-white/5 text-gray-400 hover:text-white transition-colors border-l border-[#444746]">
-                             <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-                        </button>
+                    <div className="flex items-center bg-muted rounded-lg mr-4 border">
+                        <Button variant="ghost" size="icon" onClick={handleZoomOut} className="border-r rounded-none">
+                            <ZoomOut className="w-4 h-4" />
+                        </Button>
+                        <span className="w-12 text-center text-xs font-mono">{Math.round(zoom * 100)}%</span>
+                        <Button variant="ghost" size="icon" onClick={handleZoomIn} className="border-l rounded-none">
+                            <ZoomIn className="w-4 h-4" />
+                        </Button>
                     </div>
                 )}
-                <button onClick={onClose} className="w-8 h-8 rounded-full hover:bg-white/10 flex items-center justify-center text-gray-400 hover:text-white transition-colors">
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M18 6L6 18M6 6l12 12"/></svg>
-                </button>
+                <Button variant="ghost" size="icon" onClick={onClose}>
+                    <X className="w-5 h-5" />
+                </Button>
             </div>
         </div>
 
         {/* Main Viewer Area */}
-        <div className="flex-1 overflow-auto p-6 relative bg-[#0f1011] custom-scrollbar flex items-start justify-center">
+        <div className="flex-1 overflow-auto p-6 relative bg-muted/20 custom-scrollbar flex items-start justify-center">
             
             {/* Image Viewer */}
             {note.type === NoteType.IMAGE && (
                 <div className="flex items-center justify-center min-h-full w-full">
-                    <img src={`data:image/png;base64,${note.content}`} alt="Note" className="max-w-full max-h-full rounded-lg shadow-2xl border border-[#444746]" />
+                    <img src={`data:image/png;base64,${note.content}`} alt="Note" className="max-w-full max-h-full rounded-lg shadow-2xl border" />
                 </div>
             )}
 
             {/* Custom PDF Viewer */}
             {note.type === NoteType.PDF && (
-                <div className="relative shadow-2xl border border-[#2d2e31]">
-                    {isLoading && (
-                        <div className="absolute inset-0 flex items-center justify-center bg-[#0f1011] z-10">
-                            <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin"></div>
-                        </div>
-                    )}
-                    {error ? (
-                         <div className="flex flex-col items-center justify-center text-red-400 p-10 text-center">
-                             <svg className="w-12 h-12 mb-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
-                             <p>{error}</p>
-                         </div>
-                    ) : (
-                        <canvas ref={canvasRef} className="block bg-white max-w-full" />
-                    )}
-                </div>
+                <Card className="relative shadow-2xl">
+                    <CardContent className="p-0">
+                        {isLoading && (
+                            <div className="absolute inset-0 flex items-center justify-center bg-background z-10">
+                                <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin"></div>
+                            </div>
+                        )}
+                        {error ? (
+                             <div className="flex flex-col items-center justify-center text-destructive p-10 text-center">
+                                 <AlertCircle className="w-12 h-12 mb-4" />
+                                 <p>{error}</p>
+                             </div>
+                        ) : (
+                            <canvas ref={canvasRef} className="block bg-white max-w-full" />
+                        )}
+                    </CardContent>
+                </Card>
             )}
 
             {/* Custom PPTX / Text Viewer */}
             {note.type === NoteType.TEXT && note.structuredData && (
-                <div className="w-full max-w-5xl bg-white text-black p-12 rounded-2xl shadow-2xl min-h-[600px] flex flex-col border-4 border-gray-300 relative mb-24">
-                     <div className="absolute top-6 right-6 text-gray-400 text-sm font-mono font-bold bg-gray-100 px-3 py-1 rounded-full">Slide {pageIndex + 1} / {numPages}</div>
-                     
-                     <div className="flex-1 flex flex-col items-center justify-center text-center border-b-2 border-gray-100 pb-8 mb-8">
-                         <h2 className="text-3xl font-bold mb-6 whitespace-pre-wrap text-gray-800 leading-tight">{note.structuredData[pageIndex].content || "(No Text on Slide)"}</h2>
-                     </div>
-                     
-                     {note.structuredData[pageIndex].note && (
-                         <div className="bg-yellow-50 border-l-4 border-yellow-400 p-6 rounded-r-xl text-gray-800 shadow-sm">
-                             <span className="font-bold block mb-2 uppercase text-xs tracking-widest text-yellow-700">Speaker Notes</span>
-                             <p className="text-lg leading-relaxed">{note.structuredData[pageIndex].note}</p>
-                         </div>
-                     )}
-                </div>
+                <Card className="w-full max-w-5xl shadow-2xl min-h-[600px] mb-24">
+                     <CardContent className="p-12 flex flex-col">
+                        <div className="absolute top-6 right-6 text-muted-foreground text-sm font-mono font-bold bg-muted px-3 py-1 rounded-full">Slide {pageIndex + 1} / {numPages}</div>
+                        
+                        <div className="flex-1 flex flex-col items-center justify-center text-center border-b-2 pb-8 mb-8">
+                            <h2 className="text-3xl font-bold mb-6 whitespace-pre-wrap leading-tight">{note.structuredData[pageIndex].content || "(No Text on Slide)"}</h2>
+                        </div>
+                        
+                        {note.structuredData[pageIndex].note && (
+                            <div className="bg-yellow-50 border-l-4 border-yellow-400 p-6 rounded-r-xl text-yellow-900 shadow-sm">
+                                <span className="font-bold block mb-2 uppercase text-xs tracking-widest text-yellow-700">Speaker Notes</span>
+                                <p className="text-lg leading-relaxed">{note.structuredData[pageIndex].note}</p>
+                            </div>
+                        )}
+                     </CardContent>
+                </Card>
             )}
 
             {/* Raw Text Fallback */}
             {note.type === NoteType.TEXT && !note.structuredData && (
-                <div className="max-w-3xl w-full mx-auto bg-[#1e1f20] p-10 rounded-2xl border border-[#444746] shadow-lg min-h-full">
-                    <pre className="whitespace-pre-wrap font-sans text-gray-300 leading-relaxed text-lg">{note.content}</pre>
-                </div>
+                <Card className="max-w-3xl w-full mx-auto shadow-lg min-h-full">
+                    <CardContent className="p-10">
+                        <pre className="whitespace-pre-wrap font-sans text-lg">{note.content}</pre>
+                    </CardContent>
+                </Card>
             )}
         </div>
 
         {/* Floating Controls (Shared for PDF & PPTX) */}
         {(note.type === NoteType.PDF || (note.type === NoteType.TEXT && note.structuredData)) && (
             <div className="absolute bottom-6 left-0 right-0 flex justify-center gap-4 z-30 pointer-events-none">
-                 <div className="bg-[#1e1f20]/90 backdrop-blur border border-[#444746] p-2 rounded-full shadow-2xl flex items-center gap-4 pointer-events-auto">
-                     <button 
+                 <div className="bg-card/90 backdrop-blur border p-2 rounded-full shadow-2xl flex items-center gap-4 pointer-events-auto">
+                     <Button 
                         onClick={handlePrev}
                         disabled={pageIndex === 0}
-                        className="w-10 h-10 flex items-center justify-center rounded-full hover:bg-white/10 text-white disabled:opacity-30 transition-all"
+                        variant="ghost"
+                        size="icon"
                      >
-                         <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg>
-                     </button>
+                         <ChevronLeft className="w-5 h-5" />
+                     </Button>
                      
-                     <div className="font-mono text-sm font-medium text-gray-300 min-w-[80px] text-center select-none">
-                         {pageIndex + 1} <span className="text-gray-600 mx-1">/</span> {numPages}
+                     <div className="font-mono text-sm font-medium min-w-[80px] text-center select-none">
+                         {pageIndex + 1} <span className="text-muted-foreground mx-1">/</span> {numPages}
                      </div>
 
-                     <button 
+                     <Button 
                         onClick={handleNext}
                         disabled={pageIndex === numPages - 1}
-                        className="w-10 h-10 flex items-center justify-center rounded-full hover:bg-white/10 text-white disabled:opacity-30 transition-all"
+                        variant="ghost"
+                        size="icon"
                      >
-                         <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M9 18l6-6-6-6"/></svg>
-                     </button>
+                         <ChevronRight className="w-5 h-5" />
+                     </Button>
                  </div>
             </div>
         )}

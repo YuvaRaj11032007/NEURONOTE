@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Flashcard } from '../types';
-import { Button } from '@/components/ui/Button';
-import { Card, CardContent } from '@/components/ui/Card';
+import { Button } from '@/components/ui/Button.tsx';
+import { Card, CardContent } from '@/components/ui/Card.tsx';
 import { Layers, ChevronLeft, ChevronRight } from 'lucide-react';
 
 interface FlashcardReviewProps {

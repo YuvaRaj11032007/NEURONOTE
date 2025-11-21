@@ -11,7 +11,7 @@ import FileViewer from './components/FileViewer';
 import { Auth } from './components/Auth';
 import { supabase } from './services/supabase';
 import { getUserSubjects, createSubjectInDb, deleteSubjectInDb, addNoteToDb, deleteNoteInDb, updateSubjectArtifacts } from './services/dataService';
-import { Button } from '@/components/ui/Button';
+import { Button } from '@/components/ui/Button.tsx';
 import { cn } from '@/lib/utils';
 
 // UI Icons

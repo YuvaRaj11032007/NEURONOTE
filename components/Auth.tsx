@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
 import { supabase } from '../services/supabase';
-import { Button } from '@/components/ui/Button';
-import { Input } from '@/components/ui/Input';
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/Card';
+import { Button } from '@/components/ui/Button.tsx';
+import { Input } from '@/components/ui/Input.tsx';
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/Card.tsx';
 import { Sparkles, Mail, Key, Shield } from 'lucide-react';
 
 export const Auth = ({ onLogin }: { onLogin: () => void }) => {

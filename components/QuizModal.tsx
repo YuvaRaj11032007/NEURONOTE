@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { QuizQuestion } from '../types';
-import { Button } from '@/components/ui/Button';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/Dialog';
-import { Progress } from '@/components/ui/Progress';
+import { Button } from '@/components/ui/Button.tsx';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/Dialog.tsx';
+import { Progress } from '@/components/ui/Progress.tsx';
 import { X, Check, Award } from 'lucide-react';
 
 interface QuizModalProps {
